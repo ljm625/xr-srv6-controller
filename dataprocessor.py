@@ -34,9 +34,13 @@ class DataProcessor(object):
         except:
             raise Exception("Failed to get node ip")
 
+    async def save_to_etcd(self,source,dest,method,seg_list,addition=""):
+        key = "{}__{}__{}__{}".format(source,dest,method,addition)
+        value = seg_list
+        await self.etcd.put(key,value)
 
 
-    async def calc(self,source,dest,method):
+    async def calc(self,source,dest,method,addition=""):
         await self.get_devices()
         await self.get_node_ip()
         await self.get_sids()
@@ -49,6 +53,7 @@ class DataProcessor(object):
         if result:
             for node in result:
                 sid_path.append(self.sid_list[node])
+        await self.save_to_etcd(source,dest,method,sid_path,addition)
         return sid_path
 
 

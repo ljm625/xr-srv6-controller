@@ -3,6 +3,8 @@ ETCD Helper written in aiohttp
 """
 import asyncio
 import json
+import time
+
 import requests
 import base64
 import aiohttp
@@ -14,6 +16,9 @@ class EtcdHelper(object):
         self.port=port
         self.check_version()
         # self.client = Client(ip, port, cert=cert, verify=verify)
+
+
+
 
     def check_version(self):
         def build_url():
@@ -79,6 +84,27 @@ class EtcdHelper(object):
         # print(self.client.version())
         # self.client.put(key, value)
 
+    async def watch(self,key,func):
+        def build_url():
+            return "http://{}:{}/{}/watch".format(self.ip,self.port,self.api)
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(build_url(),data='{"create_request": {"key":"%s"} }' % self.encode(key)) as resp:
+                if resp.status>=300:
+                    raise Exception("Error")
+                else:
+                    while True:
+                        data = await resp.content.readchunk()
+                        print(data)
+                        json_result= json.loads(data[0])
+                        if json_result.get("result") and json_result.get("result").get("events"):
+                            for data in json_result.get("result").get("events"):
+                                if self.decode(data["kv"]["key"]) == key:
+                                    print(self.decode(data["kv"]["value"]))
+                                    func(self.decode(data["kv"]["value"]))
+                                    break
+
+
     async def get(self,key):
         def build_url():
             return "http://{}:{}/{}/kv/range".format(self.ip,self.port,self.api)
@@ -107,12 +133,32 @@ class EtcdHelper(object):
         #     for value in result:
         #         return self.decode(value["value"])
 
+async def test():
+    while True:
+        await sleep_test()
+        await asyncio.sleep(0.00001)
+
+
+async def sleep_test():
+    time.sleep(1)
+
+def do_something(value):
+    print("Updated: "+ value)
+
+
+
 
 if __name__ == '__main__':
 
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(EtcdHelper("jp.debug.com",52379).get("test"))
+    # loop.run_until_complete(EtcdHelper("jp.debug.com",52379).put("foo","foo222"))
 
+    # coro = test()
+    # asyncio.ensure_future(coro)
+    coro2 = EtcdHelper("jp.debug.com",52379).watch("foo",do_something)
+    asyncio.ensure_future(coro2)
+    loop.run_forever()
+    # loop.run_until_complete(EtcdHelper("jp.debug.com",52379).watch("foo"))
     # etcd=EtcdHelper("jp.debug.com",52379)
-    # # etcd.put("test","newtest")
+    # etcd.put("foo","foo123")
     # print(etcd.get("RouterA"))
