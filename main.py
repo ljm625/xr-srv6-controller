@@ -1,3 +1,4 @@
+import asyncio
 import getopt
 import sys
 import traceback
@@ -7,7 +8,7 @@ import tornado.web
 import json
 from dataprocessor import DataProcessor
 
-username = password = etcd_ip = etcd_port = None
+username = password = etcd_ip = etcd_port = xtc_ip = None
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -26,7 +27,7 @@ class BaseHandler(tornado.web.RequestHandler):
 class DeviceListHandler(BaseHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._dp = DataProcessor(hostname=etcd_ip, port=etcd_port, username=username, password=password)
+        self._dp = DataProcessor.get_instance(hostname=etcd_ip, port=etcd_port, username=username, password=password,xtc_ip=xtc_ip)
     async def get(self):
         try:
             device_list = await self._dp.get_devices()
@@ -41,7 +42,7 @@ class DeviceListHandler(BaseHandler):
 class RouterCalcHandler(BaseHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._dp = DataProcessor(hostname=etcd_ip, port=etcd_port, username=username, password=password)
+        self._dp = DataProcessor.get_instance(hostname=etcd_ip, port=etcd_port, username=username, password=password,xtc_ip=xtc_ip)
 
     async def get(self):
         pass
@@ -56,7 +57,7 @@ class RouterCalcHandler(BaseHandler):
             self.write(json.dumps({"error": "params are not valid"}))
             return
         try:
-            result = await self._dp.calc(data.get("source"),data.get("dest"),data.get("method"))
+            result = await self._dp.get_calc(data.get("source"),data.get("dest"),data.get("method"))
             self.write(json.dumps({"result":"success", "sid_list":result}))
         except Exception as e:
             traceback.print_exc()
@@ -68,7 +69,7 @@ class RouterCalcHandler(BaseHandler):
 
 if __name__ == "__main__":
 
-    opts, args = getopt.getopt(sys.argv[1:], '-h:-u:-p:-i:-e:', ['help', 'username=', 'password=', 'etcd-ip=', 'etcd-port='])
+    opts, args = getopt.getopt(sys.argv[1:], '-h:-u:-p:-i:-e:-x:', ['help', 'username=', 'password=', 'etcd-ip=', 'etcd-port=', 'xtc-ip='])
     for opt_name, opt_value in opts:
         if opt_name in ('-h', '--help'):
             print(
@@ -90,7 +91,11 @@ if __name__ == "__main__":
         if opt_name in ('-e', '--etcd-port'):
             etcd_port = int(opt_value)
             print("[*] Etcd Port is {}".format(etcd_port))
-    if None in [username, password, etcd_ip, etcd_port]:
+        if opt_name in ('-x', '--xtc-ip'):
+            xtc_ip = opt_value
+            print("[*] XTC IP is {}".format(xtc_ip))
+
+    if None in [username, password, etcd_ip, etcd_port,xtc_ip]:
         print(
             "[*] Help: Please enter username, password, Etcd IP, Etcd Port in parameters. Example: \n python main.py -u cisco -p cisco -e 127.0.0.1 -ep 2379")
         exit()
@@ -100,7 +105,12 @@ if __name__ == "__main__":
         (r"/api/v1/calculate", RouterCalcHandler)
     ])
     application.listen(9888)
-    tornado.ioloop.IOLoop.current().start()
+    loop = asyncio.get_event_loop()
+    dp = DataProcessor.get_instance(hostname=etcd_ip, port=etcd_port, username=username, password=password, xtc_ip=xtc_ip)
+    asyncio.ensure_future(dp.start_watch())
+    loop.run_forever()
+
+    # tornado.ioloop.IOLoop.current().start()
 
 
 

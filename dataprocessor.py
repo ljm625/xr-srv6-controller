@@ -8,7 +8,8 @@ from etcd_helper import EtcdHelper
 
 
 class DataProcessor(object):
-    def __init__(self,hostname,port,username,password):
+    instance=None
+    def __init__(self,hostname,port,username,password,xtc_ip):
         self.hostname=hostname
         self.username=username
         self.password=password
@@ -16,7 +17,18 @@ class DataProcessor(object):
         self.device_list=[]
         self.sid_list={}
         self.node_ip={}
+        self.watch_list=[]
+        self.calc_list=[]
+        self.xtc_ip=xtc_ip
         pass
+
+    @classmethod
+    def get_instance(cls,hostname,port,username,password,xtc_ip):
+        if cls.instance:
+            pass
+        else:
+            cls.instance = cls(hostname=hostname,port=port,username=username,password=password,xtc_ip=xtc_ip)
+        return cls.instance
 
     async def get_devices(self):
         json_list = await self.etcd.get("nodes")
@@ -34,20 +46,50 @@ class DataProcessor(object):
         except:
             raise Exception("Failed to get node ip")
 
-    async def save_to_etcd(self,source,dest,method,seg_list,addition=""):
-        key = "{}__{}__{}__{}".format(source,dest,method,addition)
-        value = seg_list
+    async def save_to_etcd(self,source,dest,method,seg_list,addition={}):
+        key = "{}__{}__{}__{}".format(source,dest,method,json.dumps(addition))
+        value = json.dumps(seg_list)
         await self.etcd.put(key,value)
 
+    def check_if_watched(self,source,dest,method,addition):
+        for calc in self.calc_list:
+            if calc["source"]==source and calc["dest"] == dest and calc["method"] == method and calc["addition"] ==addition:
+                return True
+        return False
 
-    async def calc(self,source,dest,method,addition=""):
-        await self.get_devices()
-        await self.get_node_ip()
-        await self.get_sids()
+
+    async def get_calc(self,source,dest,method,addition={}):
+        def add_to_watch_list(sids):
+            record = [self.sid_list[source],self.sid_list[dest]]
+            record.extend(sids)
+            self.calc_list.append({
+                "source":source,
+                "dest":dest,
+                "method":method,
+                "addition":addition,
+                "sids":record
+            })
+
+        # result = await self.etcd.get("{}__{}__{}__{}".format(source,dest,method,json.dumps(addition)))
+        watched = self.check_if_watched(source, dest, method, addition)
+
+        # Debug
+        # watched = False
+
+        # if result:
+        #     result=json.loads(result)
+        # else:
+        result = await self.calc(source,dest,method,addition)
+        if not watched:
+            add_to_watch_list(result)
+        return result
+
+
+    async def calc(self,source,dest,method,addition={}):
         assert method in ['igp', 'te', 'latency']
         assert source in self.device_list
         assert dest in self.device_list
-        self.pc = PathCalculator(ip=self.hostname,username=self.username,password=self.password,node_table=self.node_ip)
+        self.pc = PathCalculator(ip=self.xtc_ip,username=self.username,password=self.password,node_table=self.node_ip)
         result = await self.pc.compute(source,dest,method)
         sid_path=[]
         if result:
@@ -68,6 +110,27 @@ class DataProcessor(object):
             result = await self.etcd.get(device)
             self.sid_list[device] = get_end_sid(json.loads(result))
 
+    async def start_watch(self):
+        await self.get_devices()
+        await self.get_node_ip()
+        await self.get_sids()
+        while True:
+            self.watch_sid()
+            await asyncio.sleep(120)
+
+
+    def watch_sid(self):
+        for device in self.device_list:
+            if device not in self.watch_list:
+                coro = self.etcd.watch(device,self.update_path)
+                asyncio.ensure_future(coro)
+                self.watch_list.append(device)
+
+    async def update_path(self,device):
+        await self.get_sids()
+        for calc in self.calc_list:
+            if self.sid_list[device] in calc["sids"]:
+                await self.calc(calc["source"],calc["dest"],calc["method"],calc["addition"])
 
 
 class PathCalculator(object):
@@ -114,9 +177,3 @@ class PathCalculator(object):
         for data in json["data_gpbkv"][0]["fields"]:
             jumps.append(self.ip_table[data['fields'][2]["string_value"]])
         return jumps
-
-class Translator(object):
-    def __init__(self,node_sid):
-        self.node_sid=node_sid
-    def translate(self,node):
-        return self.node_sid[node]

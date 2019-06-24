@@ -88,7 +88,7 @@ class EtcdHelper(object):
         def build_url():
             return "http://{}:{}/{}/watch".format(self.ip,self.port,self.api)
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(read_timeout=0) as session:
             async with session.post(build_url(),data='{"create_request": {"key":"%s"} }' % self.encode(key)) as resp:
                 if resp.status>=300:
                     raise Exception("Error")
@@ -101,7 +101,7 @@ class EtcdHelper(object):
                             for data in json_result.get("result").get("events"):
                                 if self.decode(data["kv"]["key"]) == key:
                                     print(self.decode(data["kv"]["value"]))
-                                    func(self.decode(data["kv"]["value"]))
+                                    await func(key)
                                     break
 
 
@@ -121,6 +121,25 @@ class EtcdHelper(object):
                     else:
                         for value in result:
                             return self.decode(value["value"])
+
+    async def get_all(self, key):
+        def build_url():
+            return "http://{}:{}/{}/kv/range".format(self.ip, self.port, self.api)
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(build_url(), data='{"key": "%s", "range_end": "%s"}' % (self.encode(key),self.encode(key))) as resp:
+                if resp.status >= 300:
+                    raise Exception("Error")
+                else:
+                    data = await resp.json()
+                    result = data.get('kvs')
+                    if not result or len(result) == 0:
+                        return None
+                    else:
+                        result_list=[]
+                        for value in result:
+                            result_list.append(self.decode(value["value"]))
+                        return result_list
 
         # resp=requests.post(build_url(),data='{"key": "%s"}' % self.encode(key))
         # if resp.status_code>=300:
@@ -155,7 +174,7 @@ if __name__ == '__main__':
 
     # coro = test()
     # asyncio.ensure_future(coro)
-    coro2 = EtcdHelper("jp.debug.com",52379).watch("foo",do_something)
+    coro2 = EtcdHelper("jp.debug.tech",52379).get_all("RouterA")
     asyncio.ensure_future(coro2)
     loop.run_forever()
     # loop.run_until_complete(EtcdHelper("jp.debug.com",52379).watch("foo"))
