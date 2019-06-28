@@ -57,7 +57,6 @@ class DataProcessor(object):
                 return True
         return False
 
-
     async def get_calc(self,source,dest,method,addition={}):
         def add_to_watch_list(sids):
             record = [self.sid_list[source],self.sid_list[dest]]
@@ -79,9 +78,13 @@ class DataProcessor(object):
         # if result:
         #     result=json.loads(result)
         # else:
-        result = await self.calc(source,dest,method,addition)
+        # result = await self.calc(source,dest,method,addition)
         if not watched:
+            result = await self.calc(source, dest, method, addition)
             add_to_watch_list(result)
+        else:
+            result = await self.etcd.get("{}__{}__{}__{}".format(source, dest, method, json.dumps(addition)))
+
         return result
 
 
@@ -127,11 +130,15 @@ class DataProcessor(object):
                 self.watch_list.append(device)
 
     async def update_path(self,device):
+        def update_watch(obj,sids):
+            obj["sids"]=sids
+
+
         await self.get_sids()
         for calc in self.calc_list:
             if self.sid_list[device] in calc["sids"]:
-                await self.calc(calc["source"],calc["dest"],calc["method"],calc["addition"])
-
+                sids = await self.calc(calc["source"],calc["dest"],calc["method"],calc["addition"])
+                update_watch(calc,sids)
 
 class PathCalculator(object):
     def __init__(self,ip,username,password,node_table):
