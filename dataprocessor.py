@@ -84,9 +84,9 @@ class DataProcessor(object):
             add_to_watch_list(result)
         else:
             result = await self.etcd.get("{}__{}__{}__{}".format(source, dest, method, json.dumps(addition)))
+            result = json.loads(result)
 
         return result
-
 
     async def calc(self,source,dest,method,addition={}):
         assert method in ['igp', 'te', 'latency']
@@ -100,7 +100,6 @@ class DataProcessor(object):
                 sid_path.append(self.sid_list[node])
         await self.save_to_etcd(source,dest,method,sid_path,addition)
         return sid_path
-
 
     async def get_sids(self):
         def get_end_sid(result):
@@ -147,11 +146,10 @@ class PathCalculator(object):
         self.password=password
         self.node_table=node_table
         self.ip_table=dict(zip(self.node_table.values(),self.node_table.keys()))
-
         pass
 
     def _build_url(self):
-        return "http://{}:8080/lsp/compute/simple".format(self.ip)
+        return "http://{}:58080/lsp/compute/simple".format(self.ip)
 
     async def compute(self,source,dest,method):
         def build_payload():
