@@ -149,7 +149,7 @@ class PathCalculator(object):
         pass
 
     def _build_url(self):
-        return "http://{}:58080/lsp/compute/simple".format(self.ip)
+        return "http://{}:8080/lsp/compute/simple".format(self.ip)
 
     async def compute(self,source,dest,method):
         def build_payload():
