@@ -131,11 +131,9 @@ class DataProcessor(object):
     async def update_path(self,device):
         def update_watch(obj,sids):
             obj["sids"]=sids
-
-
         await self.get_sids()
         for calc in self.calc_list:
-            if self.sid_list[device] in calc["sids"]:
+            if (self.sid_list[device] in calc["sids"]) or (device == calc["source"]) or (device == calc["dest"]):
                 sids = await self.calc(calc["source"],calc["dest"],calc["method"],calc["addition"])
                 update_watch(calc,sids)
 
@@ -149,7 +147,7 @@ class PathCalculator(object):
         pass
 
     def _build_url(self):
-        return "http://{}:8080/lsp/compute/simple".format(self.ip)
+        return "http://{}:58080/lsp/compute/simple".format(self.ip)
 
     async def compute(self,source,dest,method):
         def build_payload():
